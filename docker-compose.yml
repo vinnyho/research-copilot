@@ -14,21 +14,3 @@ services:
 
 volumes:
   postgres_data:
-
-name: research
-
-services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_USER: research
-      POSTGRES_PASSWORD: research
-      POSTGRES_DB: research
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-

@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import uuid
@@ -16,7 +16,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173","http://localhost:5174" ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,3 +84,29 @@ def docs():
             documents = cur.fetchall()
 
     return documents
+
+
+@app.delete("/documents/{doc_id}")
+def delete_document(doc_id: str):
+    try:
+        doc_uuid = uuid.UUID(doc_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid doc_id (expected UUID)")
+
+
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM documents WHERE doc_id = %s RETURNING doc_id", (doc_uuid,))
+            deleted = cur.fetchone()
+        conn.commit()
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        (Path("storage") / f"{doc_id}.pdf").unlink()
+    except FileNotFoundError:
+        pass
+
+    return {"ok": True, "doc_id": doc_id}
+

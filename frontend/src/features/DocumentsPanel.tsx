@@ -12,31 +12,40 @@ type DocumentRow = {
 const DocumentsPanel = () => {
     const [documents, setDocuments] = useState<DocumentRow[]>([]);
 
+    async function getDocuments() {
+        const response = await fetch("http://localhost:8000/documents", {
+            method: "GET"
+        });
+        const docs: DocumentRow[] = await response.json();
+        setDocuments(docs);
+    }
+
     useEffect(() => {
-
-        
-        async function getDocuments(){
-            const response = await fetch("http://localhost:8000/documents", {
-                method: "GET"
-            });
-            console.log("test", response);
-            const docs: DocumentRow[] = await response.json();
-            setDocuments(docs);
-
-        }
         getDocuments();
         const id = setInterval(getDocuments, 1500);
         return () => clearInterval(id);
-
     }, []);
 
+    async function deleteDocument(docId: string) {
+        const response = await fetch(`http://localhost:8000/documents/${docId}`, {
+            method: "DELETE"
+        });
+        if (!response.ok) {
+            const msg = await response.text().catch(() => "");
+            console.error("delete failed", response.status, msg);
+            return;
+        }
 
+        await getDocuments();
+    }
     return (
         <div>
             {documents?.map((d) => (
             <div key={d.doc_id}>
                 {d.filename} — {d.status}
+                <button onClick={() => deleteDocument(d.doc_id)}>X</button>
             </div>
+            
             ))}
         </div>
     );
