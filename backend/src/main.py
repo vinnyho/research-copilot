@@ -8,6 +8,7 @@ import ingest_pdf
 import psycopg
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -66,8 +67,18 @@ def uploadFile(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
 
 @app.get("/search")
 def search(query: str):
-    ingest_pdf.search_query(query)
-    return {"ok": True}
+    results = ingest_pdf.search_query(query)
+    return results
+
+
+class ChatRequest(BaseModel):
+    message: str
+    limit: int = 8
+
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    return ingest_pdf.answer_query(req.message, limit=req.limit)
 
 
 @app.get("/documents")
