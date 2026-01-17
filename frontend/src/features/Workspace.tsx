@@ -28,6 +28,8 @@ export default function Workspace({ documents }: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set())
   const [expandedCitations, setExpandedCitations] = useState<Set<number>>(new Set())
+  const [pdfDocId, setPdfDocId] = useState<string | null>(null)
+  const [pdfPage, setPdfPage] = useState<number>(1)
   const threadRef = useRef<HTMLDivElement>(null)
 
   const readyDocs = useMemo(
@@ -133,6 +135,18 @@ export default function Workspace({ documents }: Props) {
     setExpandedCitations(new Set())
   }
 
+  const openPdf = (docId: string, page: number = 1) => {
+    setPdfDocId(docId)
+    setPdfPage(page)
+    setTab('pdf')
+  }
+
+  const pdfUrl = pdfDocId
+    ? `http://localhost:8000/documents/${pdfDocId}/pdf#page=${pdfPage}`
+    : null
+
+  const selectedPdfDoc = readyDocs.find((d) => d.doc_id === pdfDocId)
+
   return (
     <div className="workspaceShell">
       <header className="workspaceHeader">
@@ -218,7 +232,18 @@ export default function Workspace({ documents }: Props) {
                           >
                             <div className="citationMain">
                               <div className="citationTitle">{cite.filename}</div>
-                              <div className="citationMeta">Page {cite.page}</div>
+                              <div className="citationActions">
+                                <button
+                                  className="citationViewBtn"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openPdf(cite.doc_id, cite.page)
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <div className="citationMeta">Page {cite.page}</div>
+                              </div>
                             </div>
                             {isExpanded && (
                               <div className="citationPreview">{cite.content}</div>
@@ -271,9 +296,43 @@ export default function Workspace({ documents }: Props) {
         )}
 
         {tab === 'pdf' && (
-          <div className="emptyState">
-            <div className="emptyTitle">PDF Viewer</div>
-            <div className="muted">PDF viewing coming soon.</div>
+          <div className="pdfViewerShell">
+            <div className="pdfToolbar">
+              <select
+                className="pdfSelect"
+                value={pdfDocId ?? ''}
+                onChange={(e) => {
+                  setPdfDocId(e.target.value || null)
+                  setPdfPage(1)
+                }}
+              >
+                <option value="">Select a document...</option>
+                {readyDocs.map((d) => (
+                  <option key={d.doc_id} value={d.doc_id}>
+                    {d.filename ?? 'Untitled'}
+                  </option>
+                ))}
+              </select>
+              {selectedPdfDoc && (
+                <span className="pdfInfo">
+                  {selectedPdfDoc.page_count} pages
+                </span>
+              )}
+            </div>
+            {pdfUrl ? (
+              <iframe
+                className="pdfFrame"
+                src={pdfUrl}
+                title="PDF Viewer"
+              />
+            ) : (
+              <div className="emptyState">
+                <div className="emptyTitle">No document selected</div>
+                <div className="muted">
+                  Select a document from the dropdown above, or click "View" on a citation.
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>

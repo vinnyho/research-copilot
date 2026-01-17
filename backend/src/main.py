@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import shutil
 import uuid
 from pathlib import Path
@@ -12,6 +13,8 @@ from pydantic import BaseModel
 
 load_dotenv()
 
+BASE_DIR = Path(__file__).resolve().parent
+STORAGE_DIR = BASE_DIR / "storage"
 
 app = FastAPI()
 
@@ -40,8 +43,8 @@ def uploadFile(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     doc_uuid = uuid.uuid4()
     doc_id = str(doc_uuid)
 
-    Path("storage").mkdir(parents=True, exist_ok=True)
-    pdf_path = Path("storage") / f"{doc_id}.pdf"
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    pdf_path = STORAGE_DIR / f"{doc_id}.pdf"
 
     with pdf_path.open("wb") as f:
         shutil.copyfileobj(file.file, f)
@@ -128,9 +131,27 @@ def delete_document(doc_id: str):
         raise HTTPException(status_code=404, detail="Document not found")
 
     try:
-        (Path("storage") / f"{doc_id}.pdf").unlink()
+        (STORAGE_DIR / f"{doc_id}.pdf").unlink()
     except FileNotFoundError:
         pass
 
     return {"ok": True, "doc_id": doc_id}
+
+
+@app.get("/documents/{doc_id}/pdf")
+def get_pdf(doc_id: str):
+    try:
+        uuid.UUID(doc_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid doc_id (expected UUID)")
+
+    pdf_path = STORAGE_DIR / f"{doc_id}.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    return FileResponse(
+        path=pdf_path,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline"}
+    )
 
