@@ -138,6 +138,23 @@ def delete_document(doc_id: str):
     return {"ok": True, "doc_id": doc_id}
 
 
+@app.get("/claims")
+def get_claims(doc_id: str | None = None):
+    claims = ingest_pdf.get_claims(doc_id)
+    return [
+        {
+            "id": c["id"],
+            "doc_id": str(c["doc_id"]),
+            "filename": c["filename"],
+            "page": c["page"],
+            "claim_text": c["claim_text"],
+            "category": c["category"],
+            "source_quote": c["source_quote"],
+        }
+        for c in claims
+    ]
+
+
 @app.get("/documents/{doc_id}/pdf")
 def get_pdf(doc_id: str):
     try:

@@ -4,12 +4,51 @@ import psycopg
 import fitz
 import os
 import uuid
+import json
 from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
 from pgvector.psycopg import Vector
 from psycopg.rows import dict_row
 
 load_dotenv()
+
+CLAIM_EXTRACTION_PROMPT = """Extract key claims from this research paper page. A claim is a specific assertion, finding, result, or conclusion.
+
+Categories:
+- finding: A research result or discovery (e.g., "Model X achieves 95% accuracy")
+- method: A methodological contribution (e.g., "We propose a novel attention mechanism")
+- limitation: An acknowledged limitation (e.g., "Our approach struggles with long sequences")
+- background: Important background facts cited (e.g., "Transformers have become the dominant architecture")
+
+Return a JSON array of claims. Only include clear, specific claims. If no claims found, return empty array [].
+
+Format:
+[{"claim": "...", "category": "finding|method|limitation|background", "quote": "brief relevant quote from text"}]
+
+Text:
+"""
+
+
+def extract_claims(client: OpenAI, text: str) -> list[dict]:
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "user", "content": CLAIM_EXTRACTION_PROMPT + text[:6000]}
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = resp.choices[0].message.content or "[]"
+        data = json.loads(content)
+        if isinstance(data, dict) and "claims" in data:
+            return data["claims"]
+        if isinstance(data, list):
+            return data
+        return []
+    except Exception as e:
+        print(f"Claim extraction error: {e}")
+        return []
+
 
 def ingest_pdf(doc_id, file_path):
     print("Ingesting PDF")
@@ -62,6 +101,23 @@ def ingest_pdf(doc_id, file_path):
                     (doc_uuid, page_num, chunk_index, text_for_embedding, Vector(embedding)),
                 )
                 chunk_index += 1
+
+                claims = extract_claims(client, text_for_embedding)
+                for claim in claims:
+                    claim_text = claim.get("claim", "")
+                    category = claim.get("category", "finding")
+                    if category not in ("finding", "method", "limitation", "background"):
+                        category = "finding"
+                    source_quote = claim.get("quote", "")
+                    if claim_text:
+                        cur.execute(
+                            """
+                            INSERT INTO claims (doc_id, page, claim_text, category, source_quote)
+                            VALUES (%s, %s, %s, %s, %s)
+                            """,
+                            (doc_uuid, page_num, claim_text, category, source_quote),
+                        )
+                print(f"page {page_num}: extracted {len(claims)} claims")
 
             cur.execute(
                 """
@@ -165,3 +221,30 @@ def answer_query(
         for c in chunks
     ]
     return {"answer": answer, "citations": citations}
+
+
+def get_claims(doc_id: str | None = None):
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            if doc_id:
+                doc_uuid = uuid.UUID(doc_id)
+                cur.execute(
+                    """
+                    SELECT c.id, c.doc_id, c.page, c.claim_text, c.category, c.source_quote, d.filename
+                    FROM claims c
+                    JOIN documents d ON c.doc_id = d.doc_id
+                    WHERE c.doc_id = %s
+                    ORDER BY c.page, c.id
+                    """,
+                    (doc_uuid,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT c.id, c.doc_id, c.page, c.claim_text, c.category, c.source_quote, d.filename
+                    FROM claims c
+                    JOIN documents d ON c.doc_id = d.doc_id
+                    ORDER BY d.filename, c.page, c.id
+                    """
+                )
+            return cur.fetchall()

@@ -17,6 +17,16 @@ type Message = {
   citations?: Citation[]
 }
 
+type Claim = {
+  id: number
+  doc_id: string
+  filename: string
+  page: number
+  claim_text: string
+  category: 'finding' | 'method' | 'limitation' | 'background'
+  source_quote: string | null
+}
+
 type Props = {
   documents: DocumentRow[]
 }
@@ -30,6 +40,9 @@ export default function Workspace({ documents }: Props) {
   const [expandedCitations, setExpandedCitations] = useState<Set<number>>(new Set())
   const [pdfDocId, setPdfDocId] = useState<string | null>(null)
   const [pdfPage, setPdfPage] = useState<number>(1)
+  const [claims, setClaims] = useState<Claim[]>([])
+  const [claimsLoading, setClaimsLoading] = useState(false)
+  const [claimsFilter, setClaimsFilter] = useState<string>('all')
   const threadRef = useRef<HTMLDivElement>(null)
 
   const readyDocs = useMemo(
@@ -48,6 +61,17 @@ export default function Workspace({ documents }: Props) {
       threadRef.current.scrollTop = threadRef.current.scrollHeight
     }
   }, [messages, isLoading])
+
+  useEffect(() => {
+    if (tab === 'claims') {
+      setClaimsLoading(true)
+      fetch('http://localhost:8000/claims')
+        .then((res) => res.json())
+        .then((data) => setClaims(data))
+        .catch((err) => console.error('Failed to fetch claims:', err))
+        .finally(() => setClaimsLoading(false))
+    }
+  }, [tab])
 
   const toggleDoc = (docId: string) => {
     setSelectedDocIds((prev) => {
@@ -146,6 +170,29 @@ export default function Workspace({ documents }: Props) {
     : null
 
   const selectedPdfDoc = readyDocs.find((d) => d.doc_id === pdfDocId)
+
+  const filteredClaims = useMemo(() => {
+    if (claimsFilter === 'all') return claims
+    return claims.filter((c) => c.category === claimsFilter)
+  }, [claims, claimsFilter])
+
+  const claimsByDoc = useMemo(() => {
+    const grouped: Record<string, { filename: string; claims: Claim[] }> = {}
+    for (const claim of filteredClaims) {
+      if (!grouped[claim.doc_id]) {
+        grouped[claim.doc_id] = { filename: claim.filename, claims: [] }
+      }
+      grouped[claim.doc_id].claims.push(claim)
+    }
+    return grouped
+  }, [filteredClaims])
+
+  const categoryColors: Record<string, string> = {
+    finding: '#22c55e',
+    method: '#3b82f6',
+    limitation: '#f59e0b',
+    background: '#8b5cf6',
+  }
 
   return (
     <div className="workspaceShell">
@@ -289,9 +336,70 @@ export default function Workspace({ documents }: Props) {
         )}
 
         {tab === 'claims' && (
-          <div className="emptyState">
-            <div className="emptyTitle">Claims</div>
-            <div className="muted">Claim extraction coming soon.</div>
+          <div className="claimsShell">
+            <div className="claimsToolbar">
+              <span className="claimsCount">{filteredClaims.length} claims</span>
+              <div className="claimsFilters">
+                {['all', 'finding', 'method', 'limitation', 'background'].map((cat) => (
+                  <button
+                    key={cat}
+                    className={`claimsFilterBtn ${claimsFilter === cat ? 'active' : ''}`}
+                    onClick={() => setClaimsFilter(cat)}
+                    style={cat !== 'all' ? { borderColor: categoryColors[cat] } : undefined}
+                  >
+                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="claimsList">
+              {claimsLoading && (
+                <div className="emptyState">
+                  <div className="muted">Loading claims...</div>
+                </div>
+              )}
+
+              {!claimsLoading && filteredClaims.length === 0 && (
+                <div className="emptyState">
+                  <div className="emptyTitle">No claims found</div>
+                  <div className="muted">
+                    {claims.length === 0
+                      ? 'Upload and process papers to extract claims.'
+                      : 'No claims match the current filter.'}
+                  </div>
+                </div>
+              )}
+
+              {!claimsLoading &&
+                Object.entries(claimsByDoc).map(([docId, { filename, claims: docClaims }]) => (
+                  <div key={docId} className="claimsDocGroup">
+                    <div className="claimsDocHeader">{filename}</div>
+                    {docClaims.map((claim) => (
+                      <div key={claim.id} className="claimCard">
+                        <div className="claimHeader">
+                          <span
+                            className="claimCategory"
+                            style={{ background: categoryColors[claim.category] }}
+                          >
+                            {claim.category}
+                          </span>
+                          <button
+                            className="claimViewBtn"
+                            onClick={() => openPdf(claim.doc_id, claim.page)}
+                          >
+                            Page {claim.page}
+                          </button>
+                        </div>
+                        <div className="claimText">{claim.claim_text}</div>
+                        {claim.source_quote && (
+                          <div className="claimQuote">"{claim.source_quote}"</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+            </div>
           </div>
         )}
 
