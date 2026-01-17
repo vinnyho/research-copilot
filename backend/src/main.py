@@ -71,14 +71,27 @@ def search(query: str):
     return results
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     message: str
+    history: list[ChatMessage] = []
+    doc_ids: list[str] | None = None
     limit: int = 8
 
 
 @app.post("/chat")
 def chat(req: ChatRequest):
-    return ingest_pdf.answer_query(req.message, limit=req.limit)
+    history = [{"role": m.role, "content": m.content} for m in req.history]
+    return ingest_pdf.answer_query(
+        req.message,
+        history=history,
+        doc_ids=req.doc_ids,
+        limit=req.limit
+    )
 
 
 @app.get("/documents")

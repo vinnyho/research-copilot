@@ -75,7 +75,7 @@ def ingest_pdf(doc_id, file_path):
 
                         
 
-def search_query(query: str, limit: int = 5):
+def search_query(query: str, doc_ids: list[str] | None = None, limit: int = 5):
 
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     resp = client.embeddings.create(model="text-embedding-3-small", input=query)
@@ -84,53 +84,80 @@ def search_query(query: str, limit: int = 5):
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         register_vector(conn)
         with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """
-                SELECT doc_id, page, chunk_index, content
-                FROM document_chunks
-                ORDER BY embedding <-> %s
-                LIMIT %s
-                """,
-                (Vector(query_embedding), limit),
-            )
+            if doc_ids and len(doc_ids) > 0:
+                doc_uuids = [uuid.UUID(d) for d in doc_ids]
+                cur.execute(
+                    """
+                    SELECT dc.doc_id, dc.page, dc.chunk_index, dc.content, d.filename
+                    FROM document_chunks dc
+                    JOIN documents d ON dc.doc_id = d.doc_id
+                    WHERE dc.doc_id = ANY(%s)
+                    ORDER BY dc.embedding <-> %s
+                    LIMIT %s
+                    """,
+                    (doc_uuids, Vector(query_embedding), limit),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT dc.doc_id, dc.page, dc.chunk_index, dc.content, d.filename
+                    FROM document_chunks dc
+                    JOIN documents d ON dc.doc_id = d.doc_id
+                    ORDER BY dc.embedding <-> %s
+                    LIMIT %s
+                    """,
+                    (Vector(query_embedding), limit),
+                )
             return cur.fetchall()
 
 
-def answer_query(message: str, limit: int = 8):
-
-    chunks = search_query(message, limit=limit)
-
+def answer_query(
+    message: str,
+    history: list[dict] | None = None,
+    doc_ids: list[str] | None = None,
+    limit: int = 8
+):
+    chunks = search_query(message, doc_ids=doc_ids, limit=limit)
 
     sources = []
     for c in chunks:
         sources.append(
-            f"[doc={c['doc_id']} page={c['page']} chunk={c['chunk_index']}]\n{c['content']}"
+            f"[{c['filename']} | page {c['page']}]\n{c['content']}"
         )
     context = "\n\n".join(sources)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a research assistant. Answer ONLY using the provided sources. "
+                "If the sources do not contain enough information, say you don't know. "
+                "Cite sources inline like [filename | page X]. "
+                "Keep responses concise and well-structured."
+            ),
+        },
+    ]
+
+    if history:
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
+
+    messages.append({
+        "role": "user",
+        "content": f"Question:\n{message}\n\nSources:\n{context}",
+    })
 
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a research assistant. Answer ONLY using the provided sources. "
-                    "If the sources do not contain enough information, say you don't know. "
-                    "Cite sources inline like [doc=... page=... chunk=...]."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"Question:\n{message}\n\nSources:\n{context}",
-            },
-        ],
+        messages=messages,
     )
 
     answer = resp.choices[0].message.content or ""
     citations = [
         {
             "doc_id": str(c["doc_id"]),
+            "filename": c["filename"],
             "page": c["page"],
             "chunk_index": c["chunk_index"],
             "content": c["content"],

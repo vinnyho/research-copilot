@@ -370,9 +370,13 @@
 .chatComposer {
   padding: 14px 18px 16px;
   border-top: 1px solid rgba(15, 23, 42, 0.10);
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  align-items: center;
   gap: 10px;
+}
+
+.chatComposer .chatInput {
+  flex: 1;
 }
 
 .chatInput {
@@ -463,5 +467,126 @@
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Document Filter */
+.docFilter {
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.docFilterHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.docFilterLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.docFilterClear {
+  font-size: 12px;
+  color: rgba(37, 99, 235, 0.9);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.docFilterClear:hover {
+  text-decoration: underline;
+}
+
+.docFilterList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.docFilterItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.docFilterItem:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.docFilterItem:has(input:checked) {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.docFilterItem input {
+  accent-color: rgba(37, 99, 235, 0.9);
+}
+
+.docFilterName {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Improved Citations */
+.citationRow {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.citationRow:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(15, 23, 42, 0.18);
+}
+
+.citationRow.expanded {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.citationMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.citationPreview {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.75);
+  line-height: 1.5;
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+/* Clear button in composer */
+.clearBtn {
+  flex-shrink: 0;
 }
 
