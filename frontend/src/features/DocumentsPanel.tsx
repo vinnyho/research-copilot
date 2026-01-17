@@ -1,47 +1,23 @@
-import { useState, useEffect } from 'react';
-
-type DocumentRow = {
-    doc_id: string;
-    filename: string | null;
-    status: "processing" | "ready" | "failed";
-    page_count: number | null;
-    created_at: string;
-    updated_at: string;
-  };
+import type { DocumentRow } from '../app/App'
 
 type Props = {
-    selectedDocId: string | null;
-    onSelectDoc: (docId: string) => void;
+    documents: DocumentRow[]
+    selectedDocId: string | null
+    onSelectDoc: (docId: string) => void
+    onDelete: () => void
 }
 
-const DocumentsPanel = ({ selectedDocId, onSelectDoc }: Props) => {
-    const [documents, setDocuments] = useState<DocumentRow[]>([]);
-
-    async function getDocuments() {
-        const response = await fetch("http://localhost:8000/documents", {
-            method: "GET"
-        });
-        const docs: DocumentRow[] = await response.json();
-        setDocuments(docs);
-    }
-
-    useEffect(() => {
-        getDocuments();
-        const id = setInterval(getDocuments, 1500);
-        return () => clearInterval(id);
-    }, []);
-
+const DocumentsPanel = ({ documents, selectedDocId, onSelectDoc, onDelete }: Props) => {
     async function deleteDocument(docId: string) {
         const response = await fetch(`http://localhost:8000/documents/${docId}`, {
-            method: "DELETE"
-        });
+            method: 'DELETE',
+        })
         if (!response.ok) {
-            const msg = await response.text().catch(() => "");
-            console.error("delete failed", response.status, msg);
-            return;
+            const msg = await response.text().catch(() => '')
+            console.error('delete failed', response.status, msg)
+            return
         }
-
-        await getDocuments();
+        onDelete()
     }
 
     function yearFromIso(iso: string) {
