@@ -1,23 +1,30 @@
-import { useRef, useState } from 'react';
+import { useRef, useState } from 'react'
 
-const UploadPaper = () => {
-    const inputRef = useRef<HTMLInputElement | null>(null);
-    const [busy, setBusy] = useState(false);
+type Props = {
+    onUploadComplete?: () => void
+}
+
+const UploadPaper = ({ onUploadComplete }: Props) => {
+    const inputRef = useRef<HTMLInputElement | null>(null)
+    const [busy, setBusy] = useState(false)
 
     async function storePDF(file: File) {
-        setBusy(true);
+        setBusy(true)
         try {
-            const form = new FormData();
-            form.append("file", file);
+            const form = new FormData()
+            form.append('file', file)
 
-            const response = await fetch("http://localhost:8000/upload", {
-                method: "POST",
-                body: form
-            });
+            const response = await fetch('http://localhost:8000/upload', {
+                method: 'POST',
+                body: form,
+            })
 
-            console.log('upload status', response.status);
+            console.log('upload status', response.status)
+            if (response.ok) {
+                onUploadComplete?.()
+            }
         } finally {
-            setBusy(false);
+            setBusy(false)
         }
     }
 
