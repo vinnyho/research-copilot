@@ -1,6 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 
 type TabId = 'chat' | 'claims' | 'pdf'
+
+type Citation = {
+  doc_id: string
+  page: number
+  chunk_index: number
+  content: string
+}
+
+type Message = {
+  role: 'user' | 'assistant'
+  content: string
+  citations?: Citation[]
+}
 
 type Props = {
   selectedDocId: string | null
@@ -8,11 +21,69 @@ type Props = {
 
 export default function Workspace({ selectedDocId }: Props) {
   const [tab, setTab] = useState<TabId>('chat')
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const threadRef = useRef<HTMLDivElement>(null)
 
   const subtitle = useMemo(() => {
     if (!selectedDocId) return 'Evidence-grounded research analysis'
     return `Selected doc: ${selectedDocId.slice(0, 8)}…`
   }, [selectedDocId])
+
+
+  useEffect(() => {
+    if (threadRef.current) {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight
+    }
+  }, [messages])
+
+  const handleSend = async () => {
+    const trimmed = input.trim()
+    if (!trimmed || isLoading) return
+
+ 
+    const userMessage: Message = { role: 'user', content: trimmed }
+    setMessages((prev) => [...prev, userMessage])
+    setInput('')
+    setIsLoading(true)
+
+    try {
+      const res = await fetch('http://localhost:8000/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: trimmed, limit: 8 }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+
+      const data = await res.json()
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: data.answer,
+        citations: data.citations,
+      }
+      setMessages((prev) => [...prev, assistantMessage])
+    } catch (err) {
+      console.error('Chat error:', err)
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: 'Sorry, there was an error processing your request. Please try again.',
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
 
   return (
     <div className="workspaceShell">
@@ -39,33 +110,56 @@ export default function Workspace({ selectedDocId }: Props) {
       <section className="workspaceBody">
         {tab === 'chat' && (
           <div className="chatShell">
-            <div className="chatThread">
-              <div className="bubble user">
-                What are the main differences between BERT and GPT architectures?
-              </div>
-
-              <div className="bubble assistant">
-                BERT is trained with masked language modeling to build bidirectional representations, while GPT is
-                trained autoregressively to predict the next token left-to-right.
-                <div className="citations">
-                  <div className="citationHeader">Citations</div>
-                  <div className="citationRow">
-                    <div className="citationTitle">BERT: Pre-training…</div>
-                    <div className="citationMeta">Page 3</div>
-                  </div>
-                  <div className="citationRow">
-                    <div className="citationTitle">GPT-3: Language Models…</div>
-                    <div className="citationMeta">Page 5</div>
-                  </div>
+            <div className="chatThread" ref={threadRef}>
+              {messages.length === 0 && (
+                <div className="emptyState">
+                  <div className="emptyTitle">Start a conversation</div>
+                  <div className="muted">Ask questions about your uploaded research papers.</div>
                 </div>
-              </div>
+              )}
 
-              <div className="bubble user">Which approach is better for downstream tasks?</div>
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`bubble ${msg.role}`}>
+                  {msg.content}
+                  {msg.citations && msg.citations.length > 0 && (
+                    <div className="citations">
+                      <div className="citationHeader">Sources ({msg.citations.length})</div>
+                      {msg.citations.map((cite, cIdx) => (
+                        <div key={cIdx} className="citationRow">
+                          <div className="citationTitle">
+                            Doc {cite.doc_id.slice(0, 8)}…
+                          </div>
+                          <div className="citationMeta">Page {cite.page}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {isLoading && (
+                <div className="bubble assistant loading">
+                  <span className="loadingDots">Thinking</span>
+                </div>
+              )}
             </div>
 
             <div className="chatComposer">
-              <input className="chatInput" placeholder="Ask a question about your research papers..." />
-              <button className="btn btnPrimary">Send</button>
+              <input
+                className="chatInput"
+                placeholder="Ask a question about your research papers..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+              />
+              <button
+                className="btn btnPrimary"
+                onClick={handleSend}
+                disabled={isLoading || !input.trim()}
+              >
+                {isLoading ? '...' : 'Send'}
+              </button>
             </div>
           </div>
         )}
