@@ -223,6 +223,99 @@ def answer_query(
     return {"answer": answer, "citations": citations}
 
 
+def generate_eval_questions(client: OpenAI, content: str, num_questions: int = 2) -> list[str]:
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"""Generate {num_questions} specific questions that can ONLY be answered using this text.
+The questions should require information unique to this passage.
+
+Return as JSON array of strings: ["question1", "question2"]
+
+Text:
+{content[:4000]}"""
+                }
+            ],
+            response_format={"type": "json_object"},
+        )
+        data = json.loads(resp.choices[0].message.content or "{}")
+        if isinstance(data, dict) and "questions" in data:
+            return data["questions"][:num_questions]
+        if isinstance(data, list):
+            return data[:num_questions]
+        return []
+    except Exception as e:
+        print(f"Question generation error: {e}")
+        return []
+
+
+def run_evaluation(k_values: list[int] = [3, 5, 10]) -> dict:
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        register_vector(conn)
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("""
+                SELECT dc.doc_id, dc.page, dc.content, d.filename
+                FROM document_chunks dc
+                JOIN documents d ON dc.doc_id = d.doc_id
+                WHERE d.status = 'ready'
+                ORDER BY d.filename, dc.page
+            """)
+            chunks = cur.fetchall()
+
+    if not chunks:
+        return {"error": "No documents found"}
+
+    eval_data = []
+    print(f"Generating questions for {len(chunks)} chunks...")
+
+    for chunk in chunks:
+        questions = generate_eval_questions(client, chunk["content"], num_questions=2)
+        for q in questions:
+            eval_data.append({
+                "question": q,
+                "expected_doc_id": str(chunk["doc_id"]),
+                "expected_page": chunk["page"],
+                "filename": chunk["filename"]
+            })
+        print(f"  {chunk['filename']} p{chunk['page']}: {len(questions)} questions")
+
+    print(f"\nRunning {len(eval_data)} evaluation queries...")
+
+    results = {f"recall@{k}": 0 for k in k_values}
+    hits = {k: 0 for k in k_values}
+
+    for i, item in enumerate(eval_data):
+        search_results = search_query(item["question"], limit=max(k_values))
+
+        retrieved_pages = [
+            (str(r["doc_id"]), r["page"]) for r in search_results
+        ]
+
+        expected = (item["expected_doc_id"], item["expected_page"])
+
+        for k in k_values:
+            if expected in retrieved_pages[:k]:
+                hits[k] += 1
+
+        if (i + 1) % 10 == 0:
+            print(f"  Processed {i + 1}/{len(eval_data)} queries")
+
+    total = len(eval_data)
+    for k in k_values:
+        results[f"recall@{k}"] = round(hits[k] / total * 100, 1) if total > 0 else 0
+
+    results["total_queries"] = total
+    results["total_documents"] = len(set(c["doc_id"] for c in chunks))
+    results["total_pages"] = len(chunks)
+
+    return results
+
+
 def get_claims(doc_id: str | None = None):
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         with conn.cursor(row_factory=dict_row) as cur:

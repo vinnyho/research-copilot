@@ -138,6 +138,12 @@ def delete_document(doc_id: str):
     return {"ok": True, "doc_id": doc_id}
 
 
+@app.get("/evaluate")
+def evaluate():
+    results = ingest_pdf.run_evaluation(k_values=[3, 5, 10])
+    return results
+
+
 @app.get("/claims")
 def get_claims(doc_id: str | None = None):
     claims = ingest_pdf.get_claims(doc_id)
