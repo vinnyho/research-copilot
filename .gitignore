@@ -1,14 +1,11 @@
-# Environment variables (never commit)
 .env
 .env.*
 .envrc
 
-# Local runtime storage (uploads, caches, etc.)
 storage/
 backend/src/storage/
 frontend/src/storage/
 
-# Node / frontend build artifacts
 node_modules/
 dist/
 dist-ssr/
@@ -21,13 +18,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Python artifacts / virtualenvs
+
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 
-# Editor directories and files
+
 .vscode/*
 !.vscode/extensions.json
 .idea
